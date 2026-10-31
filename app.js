@@ -1,7 +1,7 @@
 'use strict';
 
 // Versión de la app (se ve en la pantalla de inicio). Arreglos y ajustes: 0.1.x; novedades: 0.x.0.
-const APP_VERSION = '0.1.1';
+const APP_VERSION = '0.2.0';
 // Uso de la app en Vercel Analytics: es una sola página, así que cada función se cuenta como una
 // página virtual. Solo se envía el nombre de la función, nunca el contenido de los documentos.
 const track = (path) => { try { window.va?.('pageview', { path }); } catch (_) { /* sin analítica */ } };
@@ -118,9 +118,9 @@ function renderLogin(message = '') {
 // ---------- Archivos ----------
 
 const KINDS = {
-  text: { label: 'Texto', icon: 'doc', cls: 'text', app: 'TextCTRL', url: TEXT_URL },
-  sheet: { label: 'Hoja', icon: 'sheet', cls: 'sheet', app: 'SheetCTRL', url: SHEET_URL },
-  file: { label: 'Archivo', icon: 'file', cls: 'file' },
+  text: { label: 'Texto', icon: 'doc', cls: 'k-text', app: 'TextCTRL', url: TEXT_URL },
+  sheet: { label: 'Hoja', icon: 'sheet', cls: 'k-sheet', app: 'SheetCTRL', url: SHEET_URL },
+  file: { label: 'Archivo', icon: 'file', cls: 'k-file' },
 };
 const FILTERS = [['all', 'Todo'], ['text', 'Textos'], ['sheet', 'Hojas'], ['file', 'Archivos']];
 
@@ -204,30 +204,197 @@ function drawList() {
   $('foot').textContent = loadError || (inTrash ? 'Lo que lleva 30 días en la papelera se borra solo.' : 'Todo se cifra en tu dispositivo antes de subirse: ni el servidor ve los nombres.');
 }
 
+// ---------- Emergente del archivo: vista previa y, debajo, las opciones ----------
+
+const PREVIEW_ROWS = 60;
+const PREVIEW_COLS = 16;
+const PREVIEW_TEXT_CHARS = 60000;
+const EXT_TYPES = {
+  image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'],
+  video: ['mp4', 'mov', 'm4v', 'webm'],
+  audio: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'],
+  text: ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'log', 'xml', 'html', 'htm', 'css', 'js', 'yml', 'yaml'],
+};
+const EXT_MIME = { svg: 'image/svg+xml', mov: 'video/quicktime', m4v: 'video/mp4', pdf: 'application/pdf' };
+
+const fileExt = (f) => (/\.([^.]+)$/.exec(f.name)?.[1] || '').toLowerCase();
+function previewType(f) {
+  const ext = fileExt(f);
+  if (ext === 'pdf' || f.mime === 'application/pdf') return 'pdf';
+  const found = Object.keys(EXT_TYPES).find((t) => EXT_TYPES[t].includes(ext));
+  if (found) return found;
+  const m = /^(image|video|audio|text)\//.exec(f.mime || '');
+  return m ? m[1] : '';
+}
+
+let lastBytes = null; // el último archivo descargado: «Descargar» no lo baja otra vez
+let previewUrls = [];
+function releasePreview() {
+  previewUrls.forEach((u) => URL.revokeObjectURL(u));
+  previewUrls = [];
+}
+async function fileBytes(file, onProgress) {
+  if (lastBytes?.id === file.id && lastBytes.rev === file.rev) return lastBytes.bytes;
+  const bytes = await Cloud.get(file, onProgress);
+  lastBytes = { id: file.id, rev: file.rev, bytes };
+  return bytes;
+}
+const blobUrl = (bytes, type) => {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  previewUrls.push(url);
+  return url;
+};
+
+// El documento va en un marco sin permisos: lo que contenga no puede ejecutar nada
+function textPreview(box, payload) {
+  const frame = document.createElement('iframe');
+  frame.className = 'pv-frame';
+  frame.title = 'Vista previa del documento';
+  frame.setAttribute('sandbox', '');
+  frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>
+    html { background: #fff; } body { margin: 20px; color: #111; font: 11pt/1.4 Arial, sans-serif; overflow-wrap: anywhere; }
+    h1 { font-size: 22pt; } h2 { font-size: 16pt; } h3 { font-size: 13pt; } p { margin: 0 0 6pt; }
+    img { max-width: 100%; height: auto; } table { width: 100%; border-collapse: collapse; } td, th { padding: 5px; border: 1px solid #999; }
+    font[size="1"] { font-size: 8pt; } font[size="2"] { font-size: 10pt; } font[size="3"] { font-size: 11pt; } font[size="4"] { font-size: 12pt; }
+    font[size="5"] { font-size: 14pt; } font[size="6"] { font-size: 18pt; } font[size="7"] { font-size: 24pt; }
+  </style>${payload.html || ''}`;
+  box.replaceChildren(frame);
+}
+
+const loadEngine = () => new Promise((resolve, reject) => {
+  if (typeof Calc !== 'undefined') { resolve(); return; }
+  const s = document.createElement('script');
+  s.src = 'engine.js';
+  s.onload = resolve;
+  s.onerror = reject;
+  document.head.append(s);
+});
+// Mismo formato que guarda SheetCTRL; engine.js es una copia del suyo y calcula las fórmulas
+function restoreBook(d) {
+  const wb = { name: d.name, styles: d.styles || [{}], names: d.names || {}, sheets: [] };
+  for (const s of d.sheets) {
+    const sh = { ...newSheetData(s.name), hidden: s.hidden };
+    for (const [r, c, v, f, st] of s.cells) {
+      const x = ensureCell(sh, r, c);
+      if (v !== undefined && v !== null) x.v = v;
+      if (f !== undefined && f !== null) x.f = f;
+      if (st) x.s = st;
+    }
+    wb.sheets.push(sh);
+  }
+  return wb;
+}
+function cellText(calc, wb, si, r, c) {
+  const v = calc.safe(si, r, c);
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'object') return v.e ?? '';
+  if (typeof v === 'boolean') return v ? 'VERDADERO' : 'FALSO';
+  if (typeof v !== 'number') return String(v);
+  const nf = wb.styles[getCell(wb.sheets[si], r, c)?.s || 0]?.nf;
+  return formatNumber(v, nf).text;
+}
+const colLabel = (c) => {
+  let out = '';
+  for (let n = c + 1; n > 0; n = Math.floor((n - 1) / 26)) out = String.fromCharCode(65 + ((n - 1) % 26)) + out;
+  return out;
+};
+function drawBookTable(box, wb, calc, si) {
+  const sh = wb.sheets[si];
+  const rows = [...sh.cells.keys()];
+  const lastRow = rows.length ? Math.max(...rows) : -1;
+  let lastCol = -1;
+  for (const row of sh.cells.values()) for (const c of row.keys()) if (c > lastCol) lastCol = c;
+  const nr = Math.min(lastRow + 1, PREVIEW_ROWS);
+  const nc = Math.min(lastCol + 1, PREVIEW_COLS);
+  const seq = (n) => Array.from({ length: n }, (_, i) => i);
+  const visible = wb.sheets.map((s, i) => ({ s, i })).filter((x) => !x.s.hidden);
+  box.innerHTML = `
+    ${visible.length > 1 ? `<div class="pv-tabs">${visible.map((x) => `<button type="button" class="chip ${x.i === si ? 'on' : ''}" data-si="${x.i}">${esc(x.s.name)}</button>`).join('')}</div>` : ''}
+    ${nr && nc ? `<div class="pv-scroll"><table class="pv-table">
+      <thead><tr><th></th>${seq(nc).map((c) => `<th>${colLabel(c)}</th>`).join('')}</tr></thead>
+      <tbody>${seq(nr).map((r) => `<tr><th>${r + 1}</th>${seq(nc).map((c) => `<td>${esc(cellText(calc, wb, si, r, c))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>` : '<p class="pv-msg">Esta hoja está vacía.</p>'}
+    ${lastRow >= PREVIEW_ROWS || lastCol >= PREVIEW_COLS ? `<p class="pv-note">Se ven las primeras ${PREVIEW_ROWS} filas y ${PREVIEW_COLS} columnas.</p>` : ''}`;
+  box.querySelectorAll('[data-si]').forEach((b) => b.addEventListener('click', () => drawBookTable(box, wb, calc, Number(b.dataset.si))));
+}
+async function sheetPreview(box, payload) {
+  await loadEngine();
+  const wb = restoreBook(payload);
+  const first = Math.max(0, wb.sheets.findIndex((s) => !s.hidden));
+  drawBookTable(box, wb, new Calc(wb), first);
+}
+
+function filePreview(box, file, bytes) {
+  const type = previewType(file);
+  const ext = fileExt(file);
+  const mime = file.mime || EXT_MIME[ext] || '';
+  if (type === 'image') {
+    const img = new Image();
+    img.className = 'pv-media';
+    img.alt = file.name;
+    img.onerror = () => { box.innerHTML = '<p class="pv-msg">No se puede mostrar esta imagen.</p>'; };
+    img.src = blobUrl(bytes, mime || `image/${ext}`);
+    box.replaceChildren(img);
+  } else if (type === 'pdf') {
+    box.innerHTML = `<iframe class="pv-frame" title="Vista previa del PDF" src="${blobUrl(bytes, 'application/pdf')}"></iframe>`;
+  } else if (type === 'video' || type === 'audio') {
+    box.innerHTML = `<${type} class="pv-media" controls playsinline src="${blobUrl(bytes, mime || `${type}/${ext}`)}"></${type}>`;
+  } else if (type === 'text') {
+    const text = new TextDecoder().decode(bytes);
+    const cut = text.length > PREVIEW_TEXT_CHARS;
+    box.innerHTML = `<pre class="pv-text">${esc(cut ? text.slice(0, PREVIEW_TEXT_CHARS) : text)}</pre>${cut ? '<p class="pv-note">Se ve solo el principio.</p>' : ''}`;
+  } else {
+    box.innerHTML = `<div class="pv-msg">${icon('file', 40)}<p>No hay vista previa de este tipo de archivo.</p></div>`;
+  }
+}
+
+async function showPreview(box, file) {
+  const stale = () => !box.isConnected;
+  try {
+    const bytes = await fileBytes(file, (p) => { if (!stale()) box.innerHTML = `<p class="pv-msg">Cargando… ${Math.round(p * 100)} %</p>`; });
+    if (stale()) return;
+    if (file.kind === 'text') textPreview(box, JSON.parse(new TextDecoder().decode(bytes)));
+    else if (file.kind === 'sheet') await sheetPreview(box, JSON.parse(new TextDecoder().decode(bytes)));
+    else filePreview(box, file, bytes);
+  } catch (err) {
+    console.error(err);
+    if (!stale()) box.innerHTML = `<p class="pv-msg">No se ha podido cargar la vista previa.<br>${esc(Cloud.errorText(err))}</p>`;
+  }
+}
+
 function openActions(file) {
   if (!file) return;
   const k = kindOf(file);
   const actions = file.trashed
-    ? [['restore', 'restore', 'Recuperar'], ['purge', 'trash', 'Borrar para siempre', 'danger']]
+    ? [['restore', 'restore', 'Recuperar'], ['purge', 'trash', 'Borrar', 'danger']]
     : [
         ...(k.url ? [['app', 'open', `Abrir en ${k.app}`]] : [['download', 'save', 'Descargar']]),
-        ['trash', 'trash', 'Mover a la papelera', 'danger'],
+        ['trash', 'trash', 'Borrar', 'danger'],
       ];
+  releasePreview();
   const back = newSheet();
   back.innerHTML = `
-    <div class="sheet" role="dialog" aria-modal="true" aria-label="Archivo">
-      <h2 class="sheet-title">${esc(file.name)}</h2>
-      <p class="small muted">${k.label} · ${fmtDate(file.upd)} · ${fmtSize(file.bytes)}</p>
+    <div class="sheet preview-sheet" role="dialog" aria-modal="true" aria-label="Archivo">
+      <div class="preview-head">
+        <span class="file-icon ${k.cls}">${icon(k.icon, 20)}</span>
+        <div>
+          <h2 class="sheet-title">${esc(file.name)}</h2>
+          <p class="small muted">${k.label} · ${fmtDate(file.upd)} · ${fmtSize(file.bytes)}</p>
+        </div>
+      </div>
+      <div class="preview" id="preview"><p class="pv-msg">Cargando…</p></div>
       <div class="action-list">
         ${actions.map(([id, ic, label, cls]) => `<button type="button" class="action ${cls || ''}" data-a="${id}">${icon(ic, 20)}${label}</button>`).join('')}
+        <button type="button" class="action" data-close>Cerrar</button>
       </div>
-      <div class="sheet-actions"><button type="button" class="ghost-btn" data-close>Cerrar</button></div>
     </div>`;
   back.querySelector('[data-close]').addEventListener('click', closeSheet);
   back.querySelectorAll('[data-a]').forEach((b) => b.addEventListener('click', () => {
     track(`/archivo/${b.dataset.a}`);
     runAction(b.dataset.a, file, k);
   }));
+  track('/archivo/vista-previa');
+  showPreview($('preview'), file);
 }
 
 async function runAction(action, file, k) {
@@ -241,7 +408,7 @@ async function runAction(action, file, k) {
   try {
     if (action === 'download') {
       toast('Descargando…', { stay: true });
-      const bytes = await Cloud.get(file, (p) => toast(`Descargando… ${Math.round(p * 100)} %`, { stay: true }));
+      const bytes = await fileBytes(file, (p) => toast(`Descargando… ${Math.round(p * 100)} %`, { stay: true }));
       await deliver(new Blob([bytes], { type: file.mime || 'application/octet-stream' }), file.name);
     } else {
       await Cloud[action](file.id);

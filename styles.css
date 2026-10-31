@@ -282,7 +282,7 @@ main {
   background: rgba(4, 4, 16, .5);
   animation: fade-in .18s ease;
 }
-:root[data-theme="light"] .sheet-backdrop { background: rgba(30, 30, 90, .3); }
+:root[data-theme="light"] .sheet-backdrop { background: rgba(90, 30, 60, .3); }
 .sheet {
   width: 100%;
   max-width: 520px;
@@ -580,15 +580,36 @@ main { padding-bottom: calc(24px + env(safe-area-inset-bottom)); gap: 12px; }
 .chip { flex: none; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 13px; }
 .chip.on { border-color: transparent; background: var(--grad-strong); color: #fff; }
 .file-icon { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; background: var(--surface-2); }
-.file-icon.text { color: #a5b4fc; }
-.file-icon.sheet { color: #4ade80; }
-.file-icon.file { color: var(--accent); }
-:root[data-theme="light"] .file-icon.text { color: #4f46e5; }
-:root[data-theme="light"] .file-icon.sheet { color: #15803d; }
+.file-icon.k-text { color: #a5b4fc; }
+.file-icon.k-sheet { color: #4ade80; }
+.file-icon.k-file { color: var(--accent); }
+:root[data-theme="light"] .file-icon.k-text { color: #4f46e5; }
+:root[data-theme="light"] .file-icon.k-sheet { color: #15803d; }
 .empty { margin: 24px 8px; text-align: center; font-size: 14px; font-weight: 300; color: var(--muted); }
-.action-list { display: grid; gap: 8px; }
-.action { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: var(--text); font-size: 15px; text-align: left; text-decoration: none; }
+.action-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.action { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: var(--text); font-size: 15px; text-align: left; text-decoration: none; }
 .action svg { flex: none; color: var(--accent); }
 .action.danger, .action.danger svg { color: var(--neg); }
 a.ghost-btn { display: inline-flex; align-items: center; text-decoration: none; color: var(--text); }
 body.drop-on main { outline: 2px dashed var(--accent); outline-offset: -8px; border-radius: 18px; }
+.preview-sheet { max-width: 720px; max-height: 92dvh; overflow-y: auto; }
+.preview-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.preview-head > div { min-width: 0; }
+.preview-head .sheet-title { margin: 0; font-size: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview { height: clamp(240px, 52dvh, 520px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.pv-msg { margin: auto; padding: 16px; display: grid; justify-items: center; gap: 10px; text-align: center; font-size: 14px; color: var(--muted); }
+.pv-msg p { margin: 0; }
+.pv-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+.pv-media { flex: 1; width: 100%; min-height: 0; object-fit: contain; }
+audio.pv-media { flex: none; margin: auto 0; }
+.pv-text { flex: 1; min-height: 0; margin: 0; padding: 14px; overflow: auto; font: 13px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pv-tabs { flex: none; display: flex; gap: 6px; padding: 8px; overflow-x: auto; scrollbar-width: none; }
+.pv-tabs .chip { padding: 5px 12px; }
+.pv-scroll { flex: 1; min-height: 0; overflow: auto; }
+.pv-table { border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.pv-table td, .pv-table th { max-width: 180px; padding: 5px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.pv-table th { position: sticky; background: var(--surface-solid); color: var(--muted); font-size: 11px; font-weight: 500; }
+.pv-table thead th { top: 0; z-index: 1; }
+.pv-table tbody th { left: 0; }
+.pv-table thead th:first-child { left: 0; z-index: 2; }
+.pv-note { flex: none; margin: 0; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); text-align: center; }

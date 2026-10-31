@@ -1,10 +1,11 @@
 // Cambia la versión al modificar archivos para que los móviles descarguen la nueva versión
-const CACHE = 'cloudctrl-v2';
+const CACHE = 'cloudctrl-v3';
 const ASSETS = [
   './',
   'index.html',
   'styles.css',
   'cloud.js',
+  'engine.js',
   'app.js',
   'manifest.webmanifest',
   'icons/icon.svg',
