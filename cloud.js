@@ -10,7 +10,7 @@
 //               remove(id), fork(id), busy(id), done(summary) }
 // Qué revisión de cada documento hay en este dispositivo se apunta aparte, en localStorage.
 const Cloud = (() => {
-  const ORIGIN = ''; // dirección de CloudCTRL en Vercel, sin barra final; vacía hasta que esté publicada
+  const ORIGIN = 'https://cloud-app-wheat.vercel.app';
   const API = window.CLOUD_API || `${ORIGIN}/api/cloud`;
   const ACCOUNT_KEY = 'cloud:account';
   const TRASH_KEY = 'cloud:pendingTrash';

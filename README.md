@@ -1,6 +1,6 @@
 # CloudCTRL
 
-Versión 0.1.0 · by OmT Finance
+Versión 0.1.1 · by OmT Finance
 
 App web (PWA): la nube privada de TextCTRL y SheetCTRL. Mismo estilo que las demás apps de OmT Finance, en rosa.
 
@@ -22,4 +22,4 @@ App web (PWA): la nube privada de TextCTRL y SheetCTRL. Mismo estilo que las dem
 
 1. Crear el proyecto en Vercel y conectar Upstash Redis (Storage).
 2. Comprobar que `/api/cloud` responde `configured: true`.
-3. Poner la dirección definitiva en `ORIGIN`, al principio de `cloud.js`, y copiar el archivo a textctrl y sheetctrl.
+3. La dirección de la app está en `ORIGIN`, al principio de `cloud.js`: si cambia, se copia el archivo a textctrl y sheetctrl.
